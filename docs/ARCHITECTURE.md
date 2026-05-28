@@ -50,19 +50,22 @@ This means entries are tried in `devices.json` order. T16 Gen 2 is listed first 
 
 ## Night Light layer (`lib/nightlight.ahk`)
 
-Windows stores the active state of Night Light in the registry:
+Windows stores the active state of Night Light in a registry blob:
 
-- Key: `HKCU\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\Cache\DefaultAccount\$$windows.data.bluelightreduction.bluelightreductionstate\Current`
-- Value: `Data` (REG_BINARY, ~43 bytes)
+- Key: `HKCU\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\windows.data.bluelightreduction.bluelightreductionstate`
+  (nested two-level: the parent key with the `default$...` prefix wraps an inner key with the same suffix, without the prefix)
+- Value: `Data` (REG_BINARY, ~41 bytes when off, ~43 bytes when on)
 
-The blob has a header, a timestamp, and a state flag. **The exact layout is undocumented** and can change between Windows builds. As of Windows 11 24H2 (build 10.0.26100), the state flag is at byte 18 (zero-indexed):
+**The exact layout is undocumented** and can change between Windows builds. As of Windows 11 build 10.0.26200 (25H2-era), the controller identifies "Night Light on" by an exact-match check at a fixed byte offset:
 
-- `0x10` (16) — Night Light is currently OFF (scheduled but not active, or disabled entirely).
-- `0x12` or `0x13` — Night Light is currently ON. Bit `0x02` is the "active" flag.
+- Byte 23 == `0x10` → Night Light is currently ON.
+- Anything else (commonly `0xD0`) → Night Light is OFF.
 
-The controller reads the blob via `RegRead`, extracts byte 18, masks with `0x02`. If the registry key is missing or shorter than expected, it returns `false` — safe default (don't activate backlight without confidence).
+The marker comes from a second copy of the `43 42 01 00` header that appears at offset 19, immediately followed by `10 00` at offset 23; that `10` is what `IsNight()` reads. The OFF blob is shorter, so byte 23 falls into unrelated payload.
 
-If Microsoft changes the layout in a future Windows update, `NL_FLAG_OFFSET` in `lib/nightlight.ahk` needs updating. The README documents how to diagnose via a registry dump.
+The controller calls `RegRead`, which returns the bytes as an uppercase hex string (2 chars per byte). If the registry key is missing or the blob is shorter than expected, it returns `false` — safe default (don't activate backlight without confidence).
+
+If Microsoft changes the layout in a future Windows update, update `NL_ON_OFFSET` and `NL_ON_BYTE` in `lib/nightlight.ahk`. The README documents the registry dump procedure for diagnosing.
 
 ## State machine (`controller.ahk`)
 

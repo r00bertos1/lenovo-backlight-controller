@@ -1,6 +1,13 @@
 # Generated artifacts
 devices.ahk
 
+# Binary assets hosted on GitHub Releases, not in the git tree
+*.webp
+*.png
+*.jpg
+*.jpeg
+*.gif
+
 # Internal docs (kept local, not pushed)
 docs/superpowers/
 

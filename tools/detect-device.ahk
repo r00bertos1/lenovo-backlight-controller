@@ -70,11 +70,11 @@ IoctlSet(matched["handle"], matched["setIoctl"], matched["setOff"])
 CloseDevice(matched["handle"])
 
 ; Build JSON entry.
+; WMIC was removed by default starting with Windows 11 25H2 (build 26200),
+; so go through PowerShell + CIM for a future-proof readout.
 modelName := ""
 try {
-    modelName := Trim(RunCommand('wmic computersystem get model /value'))
-    if (RegExMatch(modelName, "Model=(.+)", &m))
-        modelName := Trim(m[1])
+    modelName := Trim(RunCommand('powershell -NoProfile -Command "(Get-CimInstance Win32_ComputerSystem).Model"'))
 }
 if (modelName = "")
     modelName := matched["label"] . " (unknown model)"

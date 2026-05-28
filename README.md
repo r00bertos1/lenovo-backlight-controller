@@ -1,3 +1,5 @@
+![Lenovo Backlight Controller](https://github.com/r00bertos1/lenovo-backlight-controller/releases/download/v0.1.0/header.webp)
+
 # lenovo-backlight-controller
 
 Auto keyboard backlight controller for Lenovo laptops on Windows — turns on when you type, off when you don't, only at night.
@@ -49,6 +51,8 @@ Edit the constants at the top of `controller.ahk`:
 
 Restart the controller (Task Scheduler entry or re-run the installer) after editing.
 
+> Note: re-running the `iwr | iex` installer overwrites `%LOCALAPPDATA%\lenovo-backlight-controller\` with a fresh copy of `main`, so your edits revert. Keep a backup of your customized `controller.ahk` (or work from a fork) if you change the defaults.
+
 ## Troubleshooting
 
 **Backlight doesn't turn on at all.**
@@ -62,10 +66,10 @@ Restart the controller (Task Scheduler entry or re-run the installer) after edit
 **Night Light reading is wrong (controller never activates / always activates).**
 - Microsoft can change the registry blob layout in Windows updates. Inspect:
   ```powershell
-  $p = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\Cache\DefaultAccount\$$windows.data.bluelightreduction.bluelightreductionstate\Current'
+  $p = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CloudStore\Store\DefaultAccount\Current\default$windows.data.bluelightreduction.bluelightreductionstate\windows.data.bluelightreduction.bluelightreductionstate'
   (Get-ItemProperty -Path $p -Name Data).Data -join ' '
   ```
-  Toggle Night Light off/on between runs and diff. The flag byte is the one that changes. Update `NL_FLAG_OFFSET` in `lib\nightlight.ahk` if it's no longer 18.
+  Toggle Night Light off/on between runs and diff. Find the byte that consistently flips between two distinct values. Update `NL_ON_OFFSET` and `NL_ON_BYTE` in `lib\nightlight.ahk` if your build differs from offset 23 / value `0x10` (verified on Windows 11 build 26200).
 
 ## Uninstall
 
@@ -78,6 +82,22 @@ This removes the install dir and Task Scheduler entry. AutoHotkey runtime is lef
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to add device support or improve the code.
+
+## Roadmap
+
+Ideas under consideration. Open a discussion before starting larger changes — happy to refine the design together.
+
+- **Configurable activation strategy** ([#1](https://github.com/r00bertos1/lenovo-backlight-controller/issues/1)).
+  Beyond the current Night Light gate: always-on, fixed-hours schedule (e.g. `18:00-08:00`), or sync with Windows dark mode. Sketch: an `activation` config key selecting `nightlight` (default), `always`, `schedule:HH:MM-HH:MM`, or `darkmode`.
+
+- **Tray GUI for runtime configuration** ([#2](https://github.com/r00bertos1/lenovo-backlight-controller/issues/2)).
+  Right-click tray menu for idle timeout, activation strategy, and active level — instead of editing `controller.ahk`. Persist settings to a small JSON file outside the auto-overwritten install dir so customizations survive `iwr | iex` upgrades.
+
+- **Pause on low battery / battery saver** ([#3](https://github.com/r00bertos1/lenovo-backlight-controller/issues/3)).
+  Read `GetSystemPowerStatus` and skip activation when battery is below a threshold (default 20%) or Windows battery saver is active. Backlight costs measurable mW on most ThinkPads.
+
+- **Power-draw measurement and tuning** ([#4](https://github.com/r00bertos1/lenovo-backlight-controller/issues/4)).
+  Quantify CPU and battery impact of the 1-second `SetTimer` loop on T16 G2 and 1-2 older ThinkPads. Lower polling rate, switch to event-based wakeup (`SetWaitableTimer`, idle-state notification), or drop the AHK timer entirely if the data justifies it.
 
 ## Credits
 
