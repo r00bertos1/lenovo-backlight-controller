@@ -1,0 +1,16 @@
+# Generated artifacts
+devices.ahk
+
+# Internal docs (kept local, not pushed)
+docs/superpowers/
+
+# Claude Code workspace state
+.claude/
+
+# Windows / bash crash artifacts
+*.stackdump
+
+# Temporary work
+tmp/
+*.log
+*.bak
