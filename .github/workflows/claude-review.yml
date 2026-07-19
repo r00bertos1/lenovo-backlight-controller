@@ -1,12 +1,15 @@
 name: Claude Code Review
 
+# Reviews are opt-in per PR to keep usage down: opening a PR only posts a
+# picker, and the review itself runs when you comment an effort level.
 on:
   pull_request:
     types: [opened, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
 
-# One review per PR at a time; a new push supersedes an in-flight run.
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.pull_request.number || github.event.issue.number }}
   cancel-in-progress: true
 
 permissions:
@@ -14,12 +17,64 @@ permissions:
   pull-requests: write
 
 jobs:
-  review:
-    # Skip drafts and Dependabot; neither is worth the tokens.
-    if: github.event.pull_request.draft == false && github.actor != 'dependabot[bot]'
+  # Cheap: no Claude call, just tells you how to start a review.
+  picker:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.draft == false &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
+      - name: Post effort picker
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
+          '**Claude review - pick an effort level**
+
+          | Comment | Effort | Use when |
+          |---|---|---|
+          | `@claude review low` | fewer, high-confidence findings | small or low-risk diffs |
+          | `@claude review medium` | balanced | the usual default |
+          | `@claude review high` | broad coverage, may include uncertain findings | risky or security-sensitive work |
+          | `@claude review max` | exhaustive | before a release |
+
+          A bare `@claude review` runs at **low**. Reviews bill against the
+          Claude subscription of the repo owner, so higher levels cost more.'
+
+  review:
+    if: >-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      github.event.issue.state == 'open' &&
+      startsWith(github.event.comment.body, '@claude review') &&
+      github.event.comment.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Resolve effort level
+        id: effort
+        env:
+          BODY: ${{ github.event.comment.body }}
+        run: |
+          # First word after "@claude review"; default low when omitted.
+          word=$(printf '%s' "$BODY" | head -1 | awk '{print tolower($3)}')
+          case "$word" in
+            low|medium|high|max) level="$word" ;;
+            *)                   level="low" ;;
+          esac
+          echo "level=$level" >> "$GITHUB_OUTPUT"
+          echo "Running review at effort: $level"
+
+      - name: React to the request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X POST \
+            "repos/$GITHUB_REPOSITORY/issues/comments/${{ github.event.comment.id }}/reactions" \
+            -f content=eyes --silent
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -29,4 +84,5 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           plugin_marketplaces: "https://github.com/anthropics/claude-code.git"
           plugins: "code-review@claude-code-plugins"
-          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          prompt: "/code-review:code-review ${{ github.repository }}/pull/${{ github.event.issue.number }}"
+          claude_args: "--effort ${{ steps.effort.outputs.level }}"
